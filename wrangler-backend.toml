@@ -1,0 +1,8 @@
+name = "api-wallet-integration"
+main = "src/backend/index.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+TARGET_API_URL = "http://localhost:4000"
+ALLOWED_ORIGIN = "*"
+COOKIE_NAME = "api_access_token"

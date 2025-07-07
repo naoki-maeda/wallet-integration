@@ -1,17 +1,18 @@
 {
   "compilerOptions": {
     "target": "ES2021",
-    "module": "ESNext",
+    "module": "commonjs",
     "lib": ["ES2021"],
     "moduleResolution": "node",
-    "types": ["@cloudflare/workers-types"],
+    "types": ["@cloudflare/workers-types", "node"],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "allowJs": false,
-    "noEmit": true
+    "noEmit": false,
+    "outDir": "./dist"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

@@ -56,6 +56,24 @@ npm run deploy:frontend
 npm run deploy:backend
 ```
 
+## Docker
+
+### build
+
+```sh
+docker build -f Dockerfile.backend -t wallet-backend .
+docker build -f Dockerfile.frontend -t wallet-frontend .
+```
+
+### run
+
+```sh
+cp .env.example .env
+
+docker run --network host --env-file .env -p 3333:3333 wallet-frontend
+docker run --network host --env-file .env -p 4444:4444 wallet-backend
+```
+
 ## License
 
 MIT

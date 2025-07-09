@@ -26,16 +26,15 @@ export type ProvideParentOriginMessage = {
   origin: string;
 };
 
-export type AuthMessage = AuthSuccessMessage | AuthFailureMessage | RequestParentOriginMessage | ProvideParentOriginMessage;
+export type AuthMessage =
+  | AuthSuccessMessage
+  | AuthFailureMessage
+  | RequestParentOriginMessage
+  | ProvideParentOriginMessage;
 
 export interface ApiRequest {
   endpoint: string;
   method: string;
   headers?: Record<string, string>;
   body?: unknown;
-}
-
-export interface GraphQLRequest {
-  query: string;
-  variables?: Record<string, unknown>;
 }

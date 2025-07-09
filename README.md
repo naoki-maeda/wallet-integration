@@ -26,6 +26,7 @@ npm install
 1. Update `wrangler-frontend.toml` and `wrangler-backend.toml` with your CloudFlare settings
 
 Key configuration variables:
+
 - `ALLOWED_ORIGIN`: The origin of the wallet service you're integrating with
 - `TARGET_IFRAME_URL`: The login URL to load in the iframe
 - `TARGET_API_URL`: The API endpoint of the wallet service
@@ -34,11 +35,13 @@ Key configuration variables:
 ## Development
 
 Run the frontend worker:
+
 ```bash
 npm run dev:frontend
 ```
 
 Run the backend worker in a separate terminal:
+
 ```bash
 npm run dev:backend
 ```
@@ -46,11 +49,13 @@ npm run dev:backend
 ## Deployment
 
 Deploy both workers to CloudFlare:
+
 ```bash
 npm run deploy:all
 ```
 
 Or deploy individually:
+
 ```bash
 npm run deploy:frontend
 npm run deploy:backend

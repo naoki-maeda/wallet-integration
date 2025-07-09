@@ -87,33 +87,12 @@ const HTML_TEMPLATE = `
             <h2>Authentication Data</h2>
             <pre id="authDataContent"></pre>
             
-            <h3>GraphQL Query</h3>
-            <textarea id="graphqlQuery" rows="12" cols="70" placeholder="Enter your GraphQL query here...">
-query wallets($walletIds: [String!]!) {
-  wallets(walletIds: $walletIds) {
-    ...wallet
-  }
-}
-
-fragment wallet on Wallet {
-  id
-  address
-  hasBeenExported
-  importedFromExternal
-  isSecurityWeak
-}</textarea>
-            <br><br>
-            
-            <h3>Variables (JSON)</h3>
-            <textarea id="graphqlVariables" rows="4" cols="70" placeholder="Enter variables as JSON (optional)...">{"walletIds": []}</textarea>
-            <br><br>
-            
-            <button onclick="testGraphQLAPI()">Execute GraphQL Query</button>
+            <button onclick="decodeJWT()" style="margin-left: 10px; background-color: #28a745;">Decode JWT</button>
             <button onclick="clearStoredData()" style="margin-left: 10px; background-color: #dc3545;">Clear Stored Data</button>
             
-            <div id="graphqlResponse" class="hidden">
-                <h3>GraphQL Response</h3>
-                <pre id="graphqlResponseContent"></pre>
+            <div id="jwtDecodeResponse" class="hidden">
+                <h3>JWT Decode Result</h3>
+                <pre id="jwtDecodeResponseContent"></pre>
             </div>
         </div>
     </div>
@@ -154,15 +133,6 @@ fragment wallet on Wallet {
             );
         }
         
-        function isRequestParentOriginMessage(message) {
-            return (
-                typeof message === 'object' &&
-                message !== null &&
-                'type' in message &&
-                message.type === 'REQUEST_PARENT_ORIGIN'
-            );
-        }
-        
         function isValidIdentityAndKeyManager(data) {
             return (
                 typeof data === 'object' &&
@@ -200,36 +170,9 @@ fragment wallet on Wallet {
         
         window.addEventListener('message', async (event) => {
             console.log('Received postMessage:', event.data);
-            
-            // Handle REQUEST_PARENT_ORIGIN message
-            if (isRequestParentOriginMessage(event.data)) {
-                console.log('📨 REQUEST_PARENT_ORIGIN received');
-                
-                if (!event.source) {
-                    console.warn('⚠️ REQUEST_PARENT_ORIGIN: No event.source available');
-                    return;
-                }
-                
-                const currentOrigin = window.location.origin;
-                const response = {
-                    type: 'PROVIDE_PARENT_ORIGIN',
-                    origin: currentOrigin
-                };
-                
-                // Send response back to the requesting iframe
-                try {
-                    event.source.postMessage(response, event.origin);
-                    console.log('✅ PROVIDE_PARENT_ORIGIN sent to ' + event.origin + ':', response);
-                } catch (error) {
-                    console.error('❌ Failed to send PROVIDE_PARENT_ORIGIN:', error);
-                }
-                
-                return;
-            }
-            
             // Handle AUTH_SUCCESS message
             if (!isAuthSuccessMessage(event.data)) {
-                console.log('Message type is not AUTH_SUCCESS or REQUEST_PARENT_ORIGIN, ignoring:', event.data?.type);
+                console.log('Message type is not AUTH_SUCCESS ignoring:', event.data?.type);
                 return;
             }
             
@@ -282,68 +225,32 @@ fragment wallet on Wallet {
             }
         });
         
-        async function testGraphQLAPI() {
-            if (!identityData) {
-                updateStatus('No authentication data available', 'error');
-                return;
-            }
-            
-            const queryTextarea = document.getElementById('graphqlQuery');
-            const variablesTextarea = document.getElementById('graphqlVariables');
-            const query = queryTextarea.value.trim();
-            
-            if (!query) {
-                updateStatus('Please enter a GraphQL query', 'error');
-                return;
-            }
-            
-            let variables = {};
-            try {
-                const variablesText = variablesTextarea.value.trim();
-                console.log('Variables input text:', variablesText);
-                
-                if (variablesText && variablesText !== '{}') {
-                    variables = JSON.parse(variablesText);
-                    console.log('Parsed variables:', variables);
-                }
-            } catch (error) {
-                console.error('JSON parsing error:', error);
-                updateStatus('Invalid JSON in variables field: ' + error.message, 'error');
-                return;
-            }
-            
-            updateStatus('Executing GraphQL query...', 'info');
-            
-            const requestBody = {
-                query: query,
-                variables: variables
-            };
-            console.log('GraphQL request body:', requestBody);
+        async function decodeJWT() {
+            updateStatus('Decoding JWT...', 'info');
             
             try {
-                const response = await fetch(BACKEND_URL + '/graphql', {
-                    method: 'POST',
+                const response = await fetch(BACKEND_URL + '/decode', {
+                    method: 'GET',
                     credentials: 'include',
                     headers: {
                         'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(requestBody)
+                    }
                 });
                 
                 if (!response.ok) {
-                    throw new Error('GraphQL request failed: ' + response.status);
+                    throw new Error('JWT decode request failed: ' + response.status);
                 }
                 
                 const data = await response.json();
-                updateStatus('GraphQL query executed successfully!', 'success');
-                console.log('GraphQL Response:', data);
+                updateStatus('JWT decoded successfully!', 'success');
+                console.log('JWT Decode Response:', data);
                 
                 // Display response in the UI
-                document.getElementById('graphqlResponse').classList.remove('hidden');
-                document.getElementById('graphqlResponseContent').textContent = JSON.stringify(data, null, 2);
+                document.getElementById('jwtDecodeResponse').classList.remove('hidden');
+                document.getElementById('jwtDecodeResponseContent').textContent = JSON.stringify(data, null, 2);
             } catch (error) {
-                updateStatus('GraphQL query failed: ' + error.message, 'error');
-                console.error('GraphQL Error:', error);
+                updateStatus('JWT decode failed: ' + error.message, 'error');
+                console.error('JWT Decode Error:', error);
             }
         }
         
@@ -353,7 +260,7 @@ fragment wallet on Wallet {
                 identityData = null;
                 updateStatus('Cleared stored authentication data', 'info');
                 document.getElementById('authData').classList.add('hidden');
-                document.getElementById('graphqlResponse').classList.add('hidden');
+                document.getElementById('jwtDecodeResponse').classList.add('hidden');
                 document.getElementById('authButton').disabled = false;
             } catch (error) {
                 console.error('Failed to clear stored data:', error);
@@ -369,21 +276,20 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
-    if (url.pathname === '/') {
-      const html = HTML_TEMPLATE
-        .replace('{{TARGET_IFRAME_URL}}', env.TARGET_IFRAME_URL || '')
-        .replace('{{BACKEND_URL}}', env.BACKEND_URL || '')
-        .replace(/{{ALLOWED_ORIGIN}}/g, env.ALLOWED_ORIGIN || '');
+    if (url.pathname === "/") {
+      const html = HTML_TEMPLATE.replace("{{TARGET_IFRAME_URL}}", env.TARGET_IFRAME_URL || "")
+        .replace("{{BACKEND_URL}}", env.BACKEND_URL || "")
+        .replace(/{{ALLOWED_ORIGIN}}/g, env.ALLOWED_ORIGIN || "");
 
       return new Response(html, {
         headers: {
-          'Content-Type': 'text/html',
-          'X-Frame-Options': 'SAMEORIGIN',
-          'Content-Security-Policy': `frame-src ${env.ALLOWED_ORIGIN || 'none'}; script-src 'unsafe-inline' 'self';`,
+          "Content-Type": "text/html",
+          "X-Frame-Options": "SAMEORIGIN",
+          "Content-Security-Policy": `frame-src ${env.ALLOWED_ORIGIN || "none"}; script-src 'unsafe-inline' 'self';`,
         },
       });
     }
 
-    return new Response('Not Found', { status: 404 });
+    return new Response("Not Found", { status: 404 });
   },
 };

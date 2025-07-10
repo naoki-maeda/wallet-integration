@@ -44,13 +44,6 @@ const HTML_TEMPLATE = `
             background-color: #cce5ff;
             color: #004085;
         }
-        iframe {
-            width: 100%;
-            height: 500px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            margin: 20px 0;
-        }
         button {
             background-color: #007bff;
             color: white;
@@ -79,10 +72,6 @@ const HTML_TEMPLATE = `
         
         <button id="authButton" onclick="startAuth()">Start Authentication</button>
         
-        <div id="iframeContainer" class="hidden">
-            <iframe id="authFrame" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>
-        </div>
-        
         <div id="authData" class="hidden">
             <h2>Authentication Data</h2>
             <pre id="authDataContent"></pre>
@@ -98,12 +87,13 @@ const HTML_TEMPLATE = `
     </div>
 
     <script>
-        const IFRAME_URL = '{{TARGET_IFRAME_URL}}';
+        const POPUP_URL = '{{TARGET_IFRAME_URL}}';
         const BACKEND_URL = '{{BACKEND_URL}}';
         const ALLOWED_ORIGIN = '{{ALLOWED_ORIGIN}}';
         const STORAGE_KEY = 'identity_key_manager';
         
         let identityData = null;
+        let authPopup = null;
         
         function updateStatus(message, type = 'info') {
             const statusEl = document.getElementById('status');
@@ -112,14 +102,47 @@ const HTML_TEMPLATE = `
         }
         
         function startAuth() {
-            updateStatus('Loading authentication iframe...', 'info');
+            updateStatus('Opening authentication popup...', 'info');
             document.getElementById('authButton').disabled = true;
-            document.getElementById('iframeContainer').classList.remove('hidden');
             
-            const iframe = document.getElementById('authFrame');
-            iframe.src = IFRAME_URL;
+            // Popup window settings
+            const popupWidth = 500;
+            const popupHeight = 600;
+            const left = Math.max(0, (screen.width - popupWidth) / 2);
+            const top = Math.max(0, (screen.height - popupHeight) / 2);
+
+            const popupFeatures = 'width=' + popupWidth + ',height=' + popupHeight + ',left=' + left + ',top=' + top + ',resizable=yes,scrollbars=yes,status=no,menubar=no,toolbar=no,location=no';
+
+            try {
+                authPopup = window.open(POPUP_URL, 'auth_popup', popupFeatures);
+
+                // Check if popup was blocked
+                if (!authPopup || authPopup.closed) {
+                    updateStatus('Popup blocked. Please allow popups and try again.', 'error');
+                    document.getElementById('authButton').disabled = false;
+                    return;
+                }
+
+                // Monitor popup closure
+                const checkClosed = setInterval(() => {
+                    if (authPopup && authPopup.closed) {
+                        clearInterval(checkClosed);
+                        if (document.getElementById('authButton').disabled) {
+                            updateStatus('Authentication cancelled', 'info');
+                            document.getElementById('authButton').disabled = false;
+                        }
+                    }
+                }, 1000);
+
+                updateStatus('Please complete authentication in the popup window...', 'info');
+
+            } catch (error) {
+                console.error('Failed to open popup:', error);
+                updateStatus('Failed to open popup window', 'error');
+                document.getElementById('authButton').disabled = false;
+            }
         }
-        
+
         function isAuthSuccessMessage(message) {
             return (
                 typeof message === 'object' &&
@@ -132,7 +155,7 @@ const HTML_TEMPLATE = `
                 'identityAndKeyManager' in message.data
             );
         }
-        
+
         function isValidIdentityAndKeyManager(data) {
             return (
                 typeof data === 'object' &&
@@ -143,7 +166,7 @@ const HTML_TEMPLATE = `
                 typeof data.hashedSeedUpdatedAt === 'string'
             );
         }
-        
+
         function saveToLocalStorage(identityAndKeyManager) {
             try {
                 const serialized = JSON.stringify(identityAndKeyManager);
@@ -154,7 +177,7 @@ const HTML_TEMPLATE = `
                 return false;
             }
         }
-        
+
         function loadFromLocalStorage() {
             try {
                 const stored = localStorage.getItem(STORAGE_KEY);
@@ -167,9 +190,13 @@ const HTML_TEMPLATE = `
                 return null;
             }
         }
-        
+
         window.addEventListener('message', async (event) => {
             console.log('Received postMessage:', event.data);
+            console.log('Message origin:', event.origin);
+            console.log('Message source:', event.source);
+            console.log('Current authPopup:', authPopup);
+
             // Handle AUTH_SUCCESS message
             if (!isAuthSuccessMessage(event.data)) {
                 console.log('Message type is not AUTH_SUCCESS ignoring:', event.data?.type);
@@ -183,7 +210,15 @@ const HTML_TEMPLATE = `
                 console.warn('Ignoring message from unauthorized origin: ' + event.origin);
                 return;
             }
-            
+
+            // Verify message source is from our popup (only if popup is active)
+            if (authPopup && !authPopup.closed && event.source !== authPopup) {
+                console.warn('Message received from unexpected source');
+                console.log('Expected source:', authPopup);
+                console.log('Actual source:', event.source);
+                return;
+            }
+
             // Validate IdentityAndKeyManager data
             if (!isValidIdentityAndKeyManager(event.data.data.identityAndKeyManager)) {
                 console.error('Invalid IdentityAndKeyManager data received');
@@ -191,20 +226,25 @@ const HTML_TEMPLATE = `
                 document.getElementById('authButton').disabled = false;
                 return;
             }
-            
+
             console.log('Valid IdentityAndKeyManager data:', event.data.data.identityAndKeyManager);
             identityData = event.data.data.identityAndKeyManager;
-            
+
             // Save to localStorage
             const success = saveToLocalStorage(identityData);
             if (success) {
                 console.log('Identity key manager saved to localStorage successfully');
                 updateStatus('Authentication successful!', 'success');
-                
-                document.getElementById('iframeContainer').classList.add('hidden');
+
+                // Close popup window
+                if (authPopup && !authPopup.closed) {
+                    authPopup.close();
+                }
+                authPopup = null;
+
                 document.getElementById('authData').classList.remove('hidden');
                 document.getElementById('authDataContent').textContent = JSON.stringify(identityData, null, 2);
-                
+
                 // Store auth cookie if provided
                 if (event.data.cookie) {
                     document.cookie = event.data.cookie;
@@ -214,7 +254,7 @@ const HTML_TEMPLATE = `
                 document.getElementById('authButton').disabled = false;
             }
         });
-        
+
         // Load existing data on page load
         window.addEventListener('DOMContentLoaded', () => {
             identityData = loadFromLocalStorage();
@@ -224,10 +264,10 @@ const HTML_TEMPLATE = `
                 document.getElementById('authDataContent').textContent = JSON.stringify(identityData, null, 2);
             }
         });
-        
+
         async function decodeJWT() {
             updateStatus('Decoding JWT...', 'info');
-            
+
             try {
                 const response = await fetch(BACKEND_URL + '/decode', {
                     method: 'GET',
@@ -236,15 +276,15 @@ const HTML_TEMPLATE = `
                         'Content-Type': 'application/json',
                     }
                 });
-                
+
                 if (!response.ok) {
                     throw new Error('JWT decode request failed: ' + response.status);
                 }
-                
+
                 const data = await response.json();
                 updateStatus('JWT decoded successfully!', 'success');
                 console.log('JWT Decode Response:', data);
-                
+
                 // Display response in the UI
                 document.getElementById('jwtDecodeResponse').classList.remove('hidden');
                 document.getElementById('jwtDecodeResponseContent').textContent = JSON.stringify(data, null, 2);
@@ -253,7 +293,7 @@ const HTML_TEMPLATE = `
                 console.error('JWT Decode Error:', error);
             }
         }
-        
+
         function clearStoredData() {
             try {
                 localStorage.removeItem(STORAGE_KEY);
@@ -262,6 +302,12 @@ const HTML_TEMPLATE = `
                 document.getElementById('authData').classList.add('hidden');
                 document.getElementById('jwtDecodeResponse').classList.add('hidden');
                 document.getElementById('authButton').disabled = false;
+
+                // Close popup if still open
+                if (authPopup && !authPopup.closed) {
+                    authPopup.close();
+                }
+                authPopup = null;
             } catch (error) {
                 console.error('Failed to clear stored data:', error);
                 updateStatus('Failed to clear data', 'error');
@@ -285,7 +331,7 @@ export default {
         headers: {
           "Content-Type": "text/html",
           "X-Frame-Options": "SAMEORIGIN",
-          "Content-Security-Policy": `frame-src ${env.ALLOWED_ORIGIN || "none"}; script-src 'unsafe-inline' 'self';`,
+          "Content-Security-Policy": `script-src 'unsafe-inline' 'self';`,
         },
       });
     }

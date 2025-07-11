@@ -114,7 +114,8 @@ const HTML_TEMPLATE = `
             const popupFeatures = 'width=' + popupWidth + ',height=' + popupHeight + ',left=' + left + ',top=' + top + ',resizable=yes,scrollbars=yes,status=no,menubar=no,toolbar=no,location=no';
 
             try {
-                authPopup = window.open(POPUP_URL, 'auth_popup', popupFeatures);
+                // Open the popup window with the specified URL
+                authPopup = window.open(POPUP_URL,  window.location.origin, popupFeatures);
 
                 // Check if popup was blocked
                 if (!authPopup || authPopup.closed) {
